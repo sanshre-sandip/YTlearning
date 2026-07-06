@@ -112,3 +112,16 @@
 
 </body>
 </html>
+
+
+
+***Now lesta make a clear roadmap***
+
+------------------------------------------------------------------------------------------------------------
+
+**the top most important is learn python**
+
+-----------------------------------------------------
+ **master basics within a week**
+
+ **go through langachain or langgraph**
