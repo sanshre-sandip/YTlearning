@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+.commandcode/
+output/
+piper_voices/

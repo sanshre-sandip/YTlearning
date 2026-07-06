@@ -4,4 +4,23 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastmcp>=3.4.3",
+    "httpx>=0.28.1",
+    "matplotlib>=3.11.0",
+    "mcp>=1.28.1",
+    "networkx>=3.6.1",
+    "ollama>=0.6.2",
+    "openai-whisper>=20250625",
+    "piper-tts>=1.4.2",
+    "python-dotenv>=1.2.2",
+    "rich>=15.0.0",
+    "sounddevice>=0.5.5",
+    "soundfile>=0.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-httpx>=0.35.0",
+]
