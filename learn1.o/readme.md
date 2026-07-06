@@ -133,4 +133,6 @@
  ****lets leaarn what is mcp server****
 
  ***MCP ----> Model cContect Portocole***
- 
+
+
+*a new standard for connecting AI assistants to the systems where data lives, including content repositories, business tools, and development environments. Its aim is to help frontier models produce better, more relevant responses.*
