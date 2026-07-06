@@ -1,4 +1,11 @@
-"""Agent core: connects to Ollama with tool definitions and manages the conversation loop."""
+"""Agent core: connects to Ollama with tool definitions and manages the conversation loop.
+
+Supports two kinds of tools:
+  - Built-in Python tools (github, visualize, etc.)
+  - External MCP server tools (filesystem, playwriting, etc.)
+"""
+
+from __future__ import annotations
 
 from typing import Any, Callable
 import json
@@ -6,17 +13,20 @@ from pathlib import Path
 
 import ollama
 
-from src.config import OLLAMA_BASE_URL, OLLAMA_MODEL
+from src.config import OLLAMA_BASE_URL, OLLAMA_MODEL, MCP_SERVERS_CONFIG
 from src import github_tools
 from src import visualize
+from src.mcp_client import MCPServerManager
 
-# ── Tool registry ──────────────────────────────────────────────────
+# ── Built-in tool registry ─────────────────────────────────────────
 
-ToolDef = dict[str, Any]          # JSON Schema tool definition for Ollama
-ToolFunc = Callable[..., Any]     # The Python function that implements it
+ToolDef = dict[str, Any]
+ToolFunc = Callable[..., Any]
 
 
 class Tool:
+    """A built-in Python tool."""
+
     def __init__(self, name: str, description: str, parameters: dict[str, Any], fn: ToolFunc):
         self.name = name
         self.description = description
@@ -37,20 +47,23 @@ class Tool:
         return self.fn(**kwargs)
 
 
-# ── Build all tools ────────────────────────────────────────────────
+# ── Helper to build param schemas ──────────────────────────────────
 
 def _str_param(desc: str) -> dict:
     return {"type": "string", "description": desc}
 
+
 def _int_param(desc: str) -> dict:
     return {"type": "integer", "description": desc}
+
 
 def _str_list_param(desc: str) -> dict:
     return {"type": "array", "items": {"type": "string"}, "description": desc}
 
 
-TOOLS: list[Tool] = [
-    # ---- GitHub tools ----
+# ── Built-in tool definitions ──────────────────────────────────────
+
+_BUILTIN_TOOLS: list[Tool] = [
     Tool(
         name="github_get_repo",
         description="Get metadata about a GitHub repository (stars, forks, description, etc.). Format: owner/repo",
@@ -159,7 +172,6 @@ TOOLS: list[Tool] = [
         },
         fn=github_tools.github_list_repos,
     ),
-    # ---- Visualization tools ----
     Tool(
         name="visualize_commits",
         description="Generate a line chart showing commit activity over time from commit data. Returns the image path.",
@@ -227,22 +239,21 @@ TOOLS: list[Tool] = [
     ),
 ]
 
-TOOL_DEFINITIONS = [t.definition() for t in TOOLS]
-TOOL_MAP: dict[str, Tool] = {t.name: t for t in TOOLS}
+_BUILTIN_MAP: dict[str, Tool] = {t.name: t for t in _BUILTIN_TOOLS}
+_BUILTIN_DEFS = [t.definition() for t in _BUILTIN_TOOLS]
 
 
-# ── Agent ──────────────────────────────────────────────────────────
+# ── System prompt (dynamically includes MCP tool info) ─────────────
 
-SYSTEM_PROMPT = """You are an AI coding agent assistant that helps monitor and manage GitHub projects.
+BASE_SYSTEM_PROMPT = """You are an AI coding agent assistant that helps monitor and manage software projects.
 
 You have tools to:
 - Read GitHub repositories, issues, PRs, commits, and repo lists
 - Create issues and add comments on GitHub
 - Generate visualizations: commit activity charts, issue status charts, architecture diagrams
-- Provide text updates and summaries
-
+{mcp_tools_help}
 Rules:
-1. When the user asks about a repo, use the GitHub tools to fetch live data.
+1. When the user asks about a repo, use GitHub tools to fetch live data.
 2. When the user asks for charts or visualizations, first fetch the data, then use the viz tools.
 3. Always summarize what you found before showing visualizations.
 4. You can create issues and comment on PRs when asked.
@@ -251,18 +262,72 @@ Rules:
 Keep responses clear and actionable."""
 
 
-class Agent:
-    """Manages conversation with Ollama, handles tool calls, and maintains history."""
+def _build_system_prompt(mcp_tools: list[dict[str, Any]]) -> str:
+    """Build the system prompt, including any external MCP tools available."""
+    if mcp_tools:
+        lines = []
+        for td in mcp_tools:
+            fn = td.get("function", {})
+            name = fn.get("name", "")
+            desc = fn.get("description", "")
+            lines.append(f"  - {name}: {desc[:80]}")
+        mcp_help = "Additionally, you have access to these external MCP tools:\n" + "\n".join(lines)
+    else:
+        mcp_help = ""
+    return BASE_SYSTEM_PROMPT.format(mcp_tools_help=mcp_help)
 
-    def __init__(self, model: str = OLLAMA_MODEL, base_url: str = OLLAMA_BASE_URL):
+
+# ── Agent ──────────────────────────────────────────────────────────
+
+class Agent:
+    """Manages conversation with Ollama, handles built-in + MCP tool calls.
+
+    Usage:
+        agent = Agent(mcp_manager=manager)
+        await agent.start()          # starts MCP servers, collects tool defs
+        steps = await agent.run("...")   # process a user turn
+        await agent.shutdown()       # stops MCP servers
+    """
+
+    def __init__(
+        self,
+        model: str = OLLAMA_MODEL,
+        base_url: str = OLLAMA_BASE_URL,
+        mcp_manager: MCPServerManager | None = None,
+    ):
         self.model = model
         self.client = ollama.Client(host=base_url)
-        self.messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT}
-        ]
+        self.mcp = mcp_manager
+        self.mcp_tool_defs: list[dict[str, Any]] = []
+
+        # Combined tool list sent to Ollama — built-in + MCP
+        self._ollama_tool_defs: list[dict[str, Any]] = list(_BUILTIN_DEFS)
+
+        # Messages — system prompt set during start()
+        self.messages: list[dict[str, Any]] = []
+
+    async def start(self):
+        """Start MCP servers and build the combined tool list."""
+        mcp_defs: list[dict[str, Any]] = []
+        if self.mcp:
+            mcp_defs = await self.mcp.start_all()
+
+        self.mcp_tool_defs = mcp_defs
+        self._ollama_tool_defs = list(_BUILTIN_DEFS) + mcp_defs
+
+        # Build system prompt with MCP tool info
+        system_prompt = _build_system_prompt(mcp_defs)
+        self.messages = [{"role": "system", "content": system_prompt}]
+
+        print(f"\n  Tools available: {len(_BUILTIN_TOOLS)} built-in + {len(mcp_defs)} from MCP servers")
+        return len(_BUILTIN_TOOLS) + len(mcp_defs)
+
+    async def shutdown(self):
+        """Shut down MCP servers."""
+        if self.mcp:
+            await self.mcp.shutdown()
 
     def reset(self):
-        """Clear conversation history (keeps system prompt)."""
         self.messages = [self.messages[0]]
 
     def add_user_message(self, content: str):
@@ -272,25 +337,31 @@ class Agent:
         self.messages.append({"role": "assistant", "content": content})
 
     def _call_ollama(self) -> dict[str, Any]:
-        """Send messages + tools to Ollama and return the full response."""
         return self.client.chat(
             model=self.model,
             messages=self.messages,
-            tools=TOOL_DEFINITIONS,
+            tools=self._ollama_tool_defs,
         )
 
-    def _dispatch_tool(self, tool_name: str, arguments: dict) -> Any:
-        """Execute a tool by name with parsed arguments."""
-        tool = TOOL_MAP.get(tool_name)
-        if not tool:
-            raise ValueError(f"Unknown tool: {tool_name}")
-        result = tool.execute(**arguments)
-        return result
+    async def _dispatch_tool(self, tool_name: str, arguments: dict) -> Any:
+        """Execute a tool. Built-in if available, otherwise MCP."""
+        builtin = _BUILTIN_MAP.get(tool_name)
+        if builtin:
+            return builtin.execute(**arguments)
 
-    def run(self, user_input: str) -> list[dict[str, Any]]:
-        """Run one turn: send user input, process tool calls, return all steps.
+        if self.mcp:
+            return await self.mcp.call_tool(tool_name, arguments)
 
-        Returns a list of step dicts, each with 'type': 'text' | 'tool_call' | 'viz'.
+        raise ValueError(
+            f"Tool '{tool_name}' not found in built-in tools or any MCP server.\n"
+            f"Built-in: {list(_BUILTIN_MAP.keys())}\n"
+            f"MCP servers connected: {list(self.mcp.connections.keys()) if self.mcp else 'none'}"
+        )
+
+    async def run(self, user_input: str) -> list[dict[str, Any]]:
+        """Run one turn: send user input, process tool calls, return steps.
+
+        Each step dict has 'type': 'text' | 'tool_call' | 'viz'.
         """
         self.add_user_message(user_input)
         steps: list[dict[str, Any]] = []
@@ -302,43 +373,36 @@ class Agent:
             content = message.get("content", "")
             tool_calls = message.get("tool_calls", [])
 
-            # Add assistant's response to history
             assistant_msg: dict[str, Any] = {"role": "assistant", "content": content}
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
             self.messages.append(assistant_msg)
 
-            # If there's text content, capture it
             if content:
                 steps.append({"type": "text", "content": content})
 
-            # Process each tool call
             for tc in tool_calls:
                 func = tc.get("function", {})
                 tool_name = func.get("name", "")
                 raw_args = func.get("arguments", {})
 
-                # Arguments might be a JSON string (some Ollama versions)
                 if isinstance(raw_args, str):
                     arguments = json.loads(raw_args)
                 else:
                     arguments = raw_args
 
                 try:
-                    result = self._dispatch_tool(tool_name, arguments)
+                    result = await self._dispatch_tool(tool_name, arguments)
 
-                    # Determine step type
                     step_type = "tool_call"
                     step_info: dict[str, Any] = {"type": step_type, "tool": tool_name, "result": result}
 
-                    # If it's a viz function, record the output path separately
                     if tool_name.startswith("visualize_") and isinstance(result, Path):
                         step_info["type"] = "viz"
                         step_info["image_path"] = str(result)
 
                     steps.append(step_info)
 
-                    # Send tool result back to Ollama
                     result_str = json.dumps(result, default=str, indent=2)
                     self.messages.append({
                         "role": "tool",
@@ -353,7 +417,6 @@ class Agent:
                     })
                     steps.append({"type": "tool_call", "tool": tool_name, "error": str(e)})
 
-            # If no tool calls, we're done
             if not tool_calls:
                 break
 

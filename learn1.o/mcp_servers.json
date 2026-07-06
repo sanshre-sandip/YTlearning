@@ -1,0 +1,21 @@
+{
+  "$schema": "v1",
+  "description": "External MCP servers the agent connects to at startup.",
+  "servers": [
+    {
+      "name": "github",
+      "description": "GitHub API via the official MCP server (if you prefer this over built-in tools)",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    {
+      "name": "filesystem",
+      "description": "Read/write files on the local filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  ]
+}

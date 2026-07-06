@@ -18,3 +18,5 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "tiny")  # tiny | base | small | medi
 
 OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+MCP_SERVERS_CONFIG = os.getenv("MCP_SERVERS_CONFIG", str(PROJECT_ROOT / "mcp_servers.json"))
