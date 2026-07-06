@@ -125,3 +125,12 @@
  **master basics within a week**
 
  **go through langachain or langgraph**
+
+
+ **On the day one i am goona vibe code and make the ai agent that uses a mcp server ***
+
+
+ ****lets leaarn what is mcp server****
+
+ ***MCP ----> Model cContect Portocole***
+ 
