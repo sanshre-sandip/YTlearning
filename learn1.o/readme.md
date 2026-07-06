@@ -137,262 +137,35 @@
 
 *a new standard for connecting AI assistants to the systems where data lives, including content repositories, business tools, and development environments. Its aim is to help frontier models produce better, more relevant responses.*
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>MCP Visualization</title>
-
-<style>*{
-margin:0;
-padding:0;
-box-sizing:border-box;
-font-family:Arial,Helvetica,sans-serif;
-}
-
-body{
-
-background:#050816;
-overflow:hidden;
-color:white;
-height:100vh;
-
-}
-
-.background{
-
-position:fixed;
-width:100%;
-height:100%;
-
-background:
-radial-gradient(circle at top,#28359333,transparent),
-radial-gradient(circle at bottom,#00e5ff22,transparent);
-
-z-index:-1;
-
-}
-
-.title{
-
-text-align:center;
-padding:30px;
-font-size:40px;
-font-weight:bold;
-}
-
-.container{
-
-display:flex;
-justify-content:center;
-gap:120px;
-margin-top:70px;
-
-}
-
-.card{
-
-width:220px;
-height:180px;
-
-background:rgba(255,255,255,.05);
-
-backdrop-filter:blur(15px);
-
-border:1px solid rgba(255,255,255,.1);
-
-border-radius:20px;
-
-display:flex;
-flex-direction:column;
-
-justify-content:center;
-align-items:center;
-
-transition:.4s;
-
-font-size:50px;
-
-position:relative;
-
-}
-
-.card h2{
-
-font-size:24px;
-margin-top:10px;
-
-}
-
-.card p{
-
-font-size:14px;
-opacity:.7;
-
-}
-
-.card:hover{
-
-transform:translateY(-10px) scale(1.05);
-
-box-shadow:0 0 40px cyan;
-
-}
-
-.tools{
-
-display:flex;
-justify-content:center;
-gap:25px;
-margin-top:170px;
-
-flex-wrap:wrap;
-
-}
-
-.tool{
-
-padding:18px 25px;
-
-background:#0b1227;
-
-border-radius:15px;
-
-border:1px solid #00d4ff55;
-
-transition:.3s;
-
-cursor:pointer;
-
-}
-
-.tool:hover{
-
-background:#00bfff;
-
-color:black;
-
-transform:scale(1.1);
-
-}
-
-.lines{
-
-position:absolute;
-top:0;
-left:0;
-width:100%;
-height:100%;
-pointer-events:none;
-
-}
-
-.flow{
-
-stroke:#00e5ff;
-stroke-width:4;
-stroke-dasharray:10;
-animation:move 1s linear infinite;
-
-}
-
-@keyframes move{
-
-to{
-
-stroke-dashoffset:-20;
-
-}
-
-}</style>
-
-</head>
-
-<body>
-
-<div class="background"></div>
-
-<h1 class="title">
-Model Context Protocol
-</h1>
-
-<div class="container">
-
-<div class="card llm">
-🤖
-<h2>LLM</h2>
-<p>ChatGPT / Claude / Gemini</p>
-</div>
-
-<div class="card client">
-🔌
-<h2>MCP Client</h2>
-<p>Handles Connections</p>
-</div>
-
-<div class="card server">
-🛰️
-<h2>MCP Server</h2>
-<p>Provides Tools</p>
-</div>
-
-</div>
-
-<div class="tools">
-
-<div class="tool">📁 Files</div>
-<div class="tool">🗄️ Database</div>
-<div class="tool">🌐 APIs</div>
-<div class="tool">🐙 GitHub</div>
-<div class="tool">☁️ Cloud</div>
-<div class="tool">📧 Email</div>
-
-</div>
-
-<svg class="lines">
-
-<line x1="18%" y1="45%" x2="42%" y2="45%" class="flow"/>
-
-<line x1="58%" y1="45%" x2="82%" y2="45%" class="flow"/>
-
-<line x1="82%" y1="50%" x2="82%" y2="78%" class="flow"/>
-
-</svg>
-
-<script>
-    const tools=document.querySelectorAll(".tool");
-
-tools.forEach(tool=>{
-
-tool.addEventListener("click",()=>{
-
-tool.animate([
-
-{
-transform:"scale(1)"
-},
-
-{
-transform:"scale(1.3)"
-},
-
-{
-transform:"scale(1)"
-}
-
-],{
-
-duration:400
-
-});
-
-});
-
-});
-</script>
-
-</body>
-</html>
+------------------------
+
+                    MCP Architecture
+
+                    ┌─────────────────┐
+                    │      User       │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │       LLM       │
+                    │ ChatGPT/Claude  │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │   MCP Client    │
+                    └────────┬────────┘
+                             │
+               JSON-RPC over stdio/HTTP/SSE
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │   MCP Server    │
+                    └───────┬─────────┘
+                            │
+      ┌────────────┬────────┼────────────┬────────────┐
+      ▼            ▼        ▼            ▼            ▼
+ ┌────────┐  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+ │ Files  │  │ GitHub │ │ Docker │ │ APIs   │ │ SQLite │
+ └────────┘  └────────┘ └────────┘ └────────┘ └────────┘
